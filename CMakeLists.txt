@@ -116,44 +116,45 @@ if(NOT wasiclang_POPULATED)
   FetchContent_Populate(wasiclang)
 endif()
 
-# FetchContent_Declare(
-#   mod_wamr
-#   GIT_REPOSITORY https://github.com/PLSysSec/wamr_sandbox_compiler)
-# FetchContent_GetProperties(mod_wamr)
-# if(NOT mod_wamr_POPULATED)
-#   FetchContent_Populate(mod_wamr)
-# endif()
+FetchContent_Declare(
+  mod_wamr
+  GIT_REPOSITORY https://github.com/PLSysSec/wamr_sandbox_compiler)
+FetchContent_GetProperties(mod_wamr)
+if(NOT mod_wamr_POPULATED)
+  FetchContent_Populate(mod_wamr)
+endif()
 
-# Rust Lib ###################
+# set(mod_wamr_SOURCE_DIR "/home/shr/Code/Code/wamr_sandbox_compiler")
 
-# set(WAMR_DIR "${CMAKE_BINARY_DIR}/cargo/release/")
-# set(WAMR_PATH "${WAMR_DIR}/wamrc")
-# file(GLOB_RECURSE WAMR_SOURCE_FILES ${mod_wamr_SOURCE_DIR}/*.rs ${mod_wamr_SOURCE_DIR}/*.S)
+# Wamr compiler and runtime ###################
 
-# add_custom_command(OUTPUT ${WAMR_PATH}
-#                    DEPENDS ${WAMR_SOURCE_FILES}
-#                            ${mod_wamr_SOURCE_DIR}/Cargo.toml
-#                    COMMAND CARGO_TARGET_DIR=${CMAKE_BINARY_DIR}/cargo
-#                            ${CARGO}
-#                            build
-#                            --release
-#                    WORKING_DIRECTORY ${mod_wamr_SOURCE_DIR}
-#                    COMMENT "Building customized wamr compiler")
-add_custom_target(wamr_release ALL DEPENDS ${WAMR_PATH})
-
-############################# TODO: Fix
-set(mod_wamr_SOURCE_DIR "/home/shr/Code/Code/wamr_sandbox_compiler")
 set(WAMR_DIR "${mod_wamr_SOURCE_DIR}/wamr-compiler/build/")
 set(WAMR_PATH "${WAMR_DIR}/wamrc")
 
-# The wasi symbols needed by the wasm module are in this static lib, but must
-# be part of the symbol table (locatable through dlsym). We need the following
-# flag for this.
-# if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-# target_link_options(wamr_sandbox_rustlib INTERFACE "-framework" "Security" "-rdynamic")
-# else()
-# target_link_options(wamr_sandbox_rustlib INTERFACE "-rdynamic")
-# endif()
+if(UNIX AND (${CMAKE_SYSTEM_NAME} MATCHES "Darwin"))
+  set(WAMR_PARAM "-DWAMR_BUILD_TARGET=darwin")
+else()
+  set(WAMR_PARAM "")
+endif()
+
+add_custom_command(OUTPUT "${WAMR_PATH}"
+                   WORKING_DIRECTORY "${mod_wamr_SOURCE_DIR}/wamr-compiler"
+                   COMMAND ./build_llvm.sh
+                   COMMAND ${CMAKE_COMMAND}
+                           ${WAMR_PARAM}
+                           -S
+                           .
+                           -B
+                           ./build
+                   COMMAND VERBOSE=1
+                           ${CMAKE_COMMAND}
+                           --build
+                           ./build
+                           --target
+                           all
+                   COMMENT "Building wamrc compiler and runtime")
+
+add_custom_target(wamr_release ALL DEPENDS ${WAMR_PATH})
 
 # Wamr Lib ###################
 

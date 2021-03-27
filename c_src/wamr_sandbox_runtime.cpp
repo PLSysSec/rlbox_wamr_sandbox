@@ -177,7 +177,10 @@ WamrSandboxInstance* wamr_load_module(const char* wamr_module_path)
 }
 
 void wamr_drop_module(WamrSandboxInstance *inst) {
-  // TODO
+  wasm_instance_delete(inst->instance);
+  wasm_module_delete(inst->wasm_module);
+  wasm_store_delete(inst->store);
+  wasm_engine_delete(inst->engine);
 }
 
 void* wamr_get_heap_base(WamrSandboxInstance* inst)

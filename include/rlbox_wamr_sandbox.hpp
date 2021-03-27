@@ -429,7 +429,18 @@ private:
   }
 
   template<typename T_Ret, typename... T_Args>
-  inline WamrFunctionSignature get_wamr_signature(
+  static inline constexpr unsigned int get_param_count(T_Ret (* /* dummy for template inference */)(T_Args...) = nullptr) {
+    // Class return types as promoted to args
+    constexpr bool promoted = std::is_class_v<T_Ret>;
+    if constexpr (promoted) {
+      return sizeof...(T_Args) + 1;
+    } else {
+      return sizeof...(T_Args);
+    }
+  }
+
+  template<typename T_Ret, typename... T_Args>
+  inline WamrFunctionSignature get_wamr_signature(WamrValueType* param_types_buffer,
     T_Ret (* /* dummy for template inference */)(T_Args...) = nullptr) const
   {
     // Class return types as promoted to args
@@ -443,14 +454,12 @@ private:
         wamr_detail::convert_type_to_wasm_type<T_Args>::wamr_type...
       };
 
-      // TODO: eliminate
-      auto param_types_copy = new WamrValueType[sizeof(param_types) / sizeof(WamrValueType)];
-      memcpy(param_types_copy, param_types, sizeof(param_types));
+      memcpy(param_types_buffer, param_types, sizeof(param_types));
 
       WamrFunctionSignature signature{ ret_type,
                                         sizeof(param_types) /
                                           sizeof(WamrValueType),
-                                        param_types_copy };
+                                        param_types_buffer };
       return signature;
     } else {
       WamrValueType ret_type =
@@ -459,13 +468,12 @@ private:
         wamr_detail::convert_type_to_wasm_type<T_Args>::wamr_type...
       };
 
-      auto param_types_copy = new WamrValueType[sizeof(param_types) / sizeof(WamrValueType)];
-      memcpy(param_types_copy, param_types, sizeof(param_types));
+      memcpy(param_types_buffer, param_types, sizeof(param_types));
 
       WamrFunctionSignature signature{ ret_type,
                                         sizeof(param_types) /
                                           sizeof(WamrValueType),
-                                        param_types_copy };
+                                        param_types_buffer };
       return signature;
     }
   }
@@ -559,9 +567,9 @@ protected:
       if (found != internal_callbacks.end()) {
         slot_number = found->second;
       } else {
-        WamrFunctionSignature sig = get_wamr_signature(static_cast<T>(nullptr));
+        WamrValueType param_types[get_param_count(static_cast<T>(nullptr))];
+        WamrFunctionSignature sig = get_wamr_signature(param_types, static_cast<T>(nullptr));
         slot_number = wamr_register_internal_callback(sandbox, sig, p);
-        delete[] sig.parameters;
         internal_callbacks[p] = slot_number;
         slot_assignments[slot_number] = p;
       }
@@ -774,9 +782,9 @@ protected:
       "increase the maximum allowed callbacks or unsadnboxed functions "
       "pointers");
 
-    WamrFunctionSignature sig = get_wamr_signature<T_Ret, T_Args...>();
+    WamrValueType param_types[get_param_count<T_Ret, T_Args...>()];
+    WamrFunctionSignature sig = get_wamr_signature<T_Ret, T_Args...>(param_types);
     uint32_t slot_number = wamr_register_callback(sandbox, sig, chosen_interceptor);
-    delete[] sig.parameters;
 
     callback_unique_keys[found_loc] = key;
     callbacks[found_loc] = callback;
