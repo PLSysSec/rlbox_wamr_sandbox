@@ -118,7 +118,8 @@ endif()
 
 FetchContent_Declare(
   mod_wamr
-  GIT_REPOSITORY https://github.com/PLSysSec/wamr_sandbox_compiler)
+  GIT_REPOSITORY https://github.com/PLSysSec/wamr_sandbox_compiler
+  GIT_TAG main)
 FetchContent_GetProperties(mod_wamr)
 if(NOT mod_wamr_POPULATED)
   FetchContent_Populate(mod_wamr)
