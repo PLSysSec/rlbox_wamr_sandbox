@@ -60,7 +60,8 @@ static inline wasm_byte_vec_t wamr_get_vec_from_file(
 
 static inline WamrSandboxCallbackSlot wamr_get_callback_slot(
   WamrSandboxInstance* sbx,
-  void* reserved_pointer)
+  void* reserved_pointer,
+  const uint32_t callback_table_offset)
 {
   auto m = (AOTModule*)*(sbx->wasm_module);
   auto inst_aot = (AOTModuleInstance*)sbx->instance->inst_comm_rt;
@@ -70,8 +71,6 @@ static inline WamrSandboxCallbackSlot wamr_get_callback_slot(
 
   auto func_ptrs = (void**)inst_aot->func_ptrs.ptr;
   auto func_types = (uint32_t*)inst_aot->func_type_indexes.ptr;
-  //TODO: fix
-  const uint64_t magic_offset = 2;
 
   for (uint64_t idx = indirect_func_table_start, i = 0; idx < indirect_func_table_end;
        idx++, i++) {
@@ -80,7 +79,7 @@ static inline WamrSandboxCallbackSlot wamr_get_callback_slot(
       func_ptrs[idx] = nullptr;
 
       WamrSandboxCallbackSlot ret;
-      ret.callback_index = i - magic_offset;
+      ret.callback_index = i - callback_table_offset;
       ret.func_ptr_slot = &(func_ptrs[idx]);
       ret.func_type_slot = &(func_types[idx]);
       return ret;
@@ -128,14 +127,44 @@ static inline void* wamr_lookup_func_raw_ptr_idx(WamrSandboxInstance* sbx,
   DYN_CHECK(false, "Could not find raw pointer for function");
 }
 
+// The callback table indexes are offset in some unspecified way
+// What looks like index 3 to the host seems to be index 1 to the sbx
+// Compute this offset
+static uint32_t wamr_compute_callback_table_offset(WamrSandboxInstance* sbx)
+{
+  const std::string func_name = "sandboxReservedCallbackSlot1";
+  auto func_slot = wamr_lookup_function(sbx, func_name.c_str());
+  uint32_t expected_index = wamr_run_function_return_u32(sbx, func_slot, 0, nullptr);
+  void* reserved_pointer = wamr_lookup_func_raw_ptr(sbx, func_name);
+
+  auto m = (AOTModule*)*(sbx->wasm_module);
+  auto inst_aot = (AOTModuleInstance*)sbx->instance->inst_comm_rt;
+
+  uint64_t indirect_func_table_start = m->import_func_count;
+  uint64_t indirect_func_table_end = indirect_func_table_start + m->func_count;
+
+  auto func_ptrs = (void**)inst_aot->func_ptrs.ptr;
+
+  for (uint64_t idx = indirect_func_table_start, i = 0; idx < indirect_func_table_end;
+       idx++, i++) {
+    void* curr_func_ptr = func_ptrs[idx];
+    if (curr_func_ptr == reserved_pointer) {
+      return i - expected_index;
+    }
+  }
+
+  DYN_CHECK(false, "Could not compute callback table offset");
+}
+
 static inline void wamr_initialize_callback_slots(WamrSandboxInstance* sbx)
 {
+  const uint32_t callback_table_offset = wamr_compute_callback_table_offset(sbx);
   const std::string prefix = "sandboxReservedCallbackSlot";
 
   for (size_t i = 1; i <= 128; i++) {
     const std::string func_name = prefix + std::to_string(i);
     void* raw_ptr = wamr_lookup_func_raw_ptr(sbx, func_name);
-    WamrSandboxCallbackSlot slot = wamr_get_callback_slot(sbx, raw_ptr);
+    WamrSandboxCallbackSlot slot = wamr_get_callback_slot(sbx, raw_ptr, callback_table_offset);
     sbx->free_callback_slots.push_back(slot);
   }
 }
@@ -245,7 +274,7 @@ static std::optional<wasm_val_t> wamr_run_function_helper(
   DYN_CHECK(result_count == 0 || result_count == 1,
             "Multiple results not supported");
 
-  wasm_val_t args[argc];
+  wasm_val_t args[argc == 0 ? 1 : argc];
 
   for (int i = 0; i < argc; i++) {
     // enums are the same for first 4 members --- i32, i64, f32, f64
