@@ -213,13 +213,13 @@ struct rlbox_wamr_sandbox_thread_data
 #ifdef RLBOX_EMBEDDER_PROVIDES_TLS_STATIC_VARIABLES
 
 rlbox_wamr_sandbox_thread_data* get_rlbox_wamr_sandbox_thread_data();
-#  define RLBOX_WAMR_SANDBOX_STATIC_VARIABLES()                               \
-    thread_local rlbox::rlbox_wamr_sandbox_thread_data                        \
-      rlbox_wamr_sandbox_thread_info{ 0, 0 };                                 \
+#  define RLBOX_WAMR_SANDBOX_STATIC_VARIABLES()                                \
+    thread_local rlbox::rlbox_wamr_sandbox_thread_data                         \
+      rlbox_wamr_sandbox_thread_info{ 0, 0 };                                  \
     namespace rlbox {                                                          \
-      rlbox_wamr_sandbox_thread_data* get_rlbox_wamr_sandbox_thread_data()   \
+      rlbox_wamr_sandbox_thread_data* get_rlbox_wamr_sandbox_thread_data()     \
       {                                                                        \
-        return &rlbox_wamr_sandbox_thread_info;                               \
+        return &rlbox_wamr_sandbox_thread_info;                                \
       }                                                                        \
     }                                                                          \
     static_assert(true, "Enforce semi-colon")
@@ -252,8 +252,7 @@ private:
   mutable std::map<uint32_t, const void*> slot_assignments;
 
 #ifndef RLBOX_EMBEDDER_PROVIDES_TLS_STATIC_VARIABLES
-  thread_local static inline rlbox_wamr_sandbox_thread_data thread_data{ 0,
-                                                                          0 };
+  thread_local static inline rlbox_wamr_sandbox_thread_data thread_data{ 0, 0 };
 #endif
 
   template<typename T_Formal, typename T_Actual>
@@ -351,9 +350,8 @@ private:
       allocations++;
 
       // sanity check that pointers are stored as i32s
-      static_assert(
-        wamr_detail::convert_type_to_wasm_type<T_Ret*>::wamr_type ==
-        WamrValueType_I32);
+      static_assert(wamr_detail::convert_type_to_wasm_type<T_Ret*>::wamr_type ==
+                    WamrValueType_I32);
       out_wamr_args->val_type = WamrValueType_I32;
       out_wamr_args->u32 = sandboxed_ptr;
       out_wamr_args++;
@@ -429,7 +427,9 @@ private:
   }
 
   template<typename T_Ret, typename... T_Args>
-  static inline constexpr unsigned int get_param_count(T_Ret (* /* dummy for template inference */)(T_Args...) = nullptr) {
+  static inline constexpr unsigned int get_param_count(
+    T_Ret (*/* dummy for template inference */)(T_Args...) = nullptr)
+  {
     // Class return types as promoted to args
     constexpr bool promoted = std::is_class_v<T_Ret>;
     if constexpr (promoted) {
@@ -440,8 +440,9 @@ private:
   }
 
   template<typename T_Ret, typename... T_Args>
-  inline WamrFunctionSignature get_wamr_signature(WamrValueType* param_types_buffer,
-    T_Ret (* /* dummy for template inference */)(T_Args...) = nullptr) const
+  inline WamrFunctionSignature get_wamr_signature(
+    WamrValueType* param_types_buffer,
+    T_Ret (*/* dummy for template inference */)(T_Args...) = nullptr) const
   {
     // Class return types as promoted to args
     constexpr bool promoted = std::is_class_v<T_Ret>;
@@ -457,9 +458,9 @@ private:
       memcpy(param_types_buffer, param_types, sizeof(param_types));
 
       WamrFunctionSignature signature{ ret_type,
-                                        sizeof(param_types) /
-                                          sizeof(WamrValueType),
-                                        param_types_buffer };
+                                       sizeof(param_types) /
+                                         sizeof(WamrValueType),
+                                       param_types_buffer };
       return signature;
     } else {
       WamrValueType ret_type =
@@ -471,9 +472,9 @@ private:
       memcpy(param_types_buffer, param_types, sizeof(param_types));
 
       WamrFunctionSignature signature{ ret_type,
-                                        sizeof(param_types) /
-                                          sizeof(WamrValueType),
-                                        param_types_buffer };
+                                       sizeof(param_types) /
+                                         sizeof(WamrValueType),
+                                       param_types_buffer };
       return signature;
     }
   }
@@ -532,7 +533,8 @@ protected:
     impl_create_sandbox(wamr_module_path, external_loads_exist, allow_stdio);
   }
 
-  inline void impl_destroy_sandbox() {
+  inline void impl_destroy_sandbox()
+  {
     if (return_slot_size) {
       impl_free_in_sandbox(return_slot);
     }
@@ -568,7 +570,8 @@ protected:
         slot_number = found->second;
       } else {
         WamrValueType param_types[get_param_count(static_cast<T>(nullptr))];
-        WamrFunctionSignature sig = get_wamr_signature(param_types, static_cast<T>(nullptr));
+        WamrFunctionSignature sig =
+          get_wamr_signature(param_types, static_cast<T>(nullptr));
         slot_number = wamr_register_internal_callback(sandbox, sig, p);
         internal_callbacks[p] = slot_number;
         slot_assignments[slot_number] = p;
@@ -768,8 +771,8 @@ protected:
           chosen_interceptor = reinterpret_cast<void*>(
             callback_interceptor_promoted<i, T_Ret, T_Args...>);
         } else {
-          chosen_interceptor = reinterpret_cast<void*>(
-            callback_interceptor<i, T_Ret, T_Args...>);
+          chosen_interceptor =
+            reinterpret_cast<void*>(callback_interceptor<i, T_Ret, T_Args...>);
         }
       }
     });
@@ -783,8 +786,10 @@ protected:
       "pointers");
 
     WamrValueType param_types[get_param_count<T_Ret, T_Args...>()];
-    WamrFunctionSignature sig = get_wamr_signature<T_Ret, T_Args...>(param_types);
-    uint32_t slot_number = wamr_register_callback(sandbox, sig, chosen_interceptor);
+    WamrFunctionSignature sig =
+      get_wamr_signature<T_Ret, T_Args...>(param_types);
+    uint32_t slot_number =
+      wamr_register_callback(sandbox, sig, chosen_interceptor);
 
     callback_unique_keys[found_loc] = key;
     callbacks[found_loc] = callback;

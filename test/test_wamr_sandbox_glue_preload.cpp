@@ -21,7 +21,7 @@
 #undef CreateSandbox
 // NOLINTNEXTLINE
 #define CreateSandbox(sandbox)                                                 \
-  dlopen(GLUE_LIB_WAMR_PATH, RTLD_LAZY);                                      \
+  dlopen(GLUE_LIB_WAMR_PATH, RTLD_LAZY);                                       \
   (sandbox).create_sandbox(                                                    \
     GLUE_LIB_WAMR_PATH, true /* external loads */, false /* allow_stdio */)
 #include "test_sandbox_glue.inc.cpp"

@@ -72,7 +72,8 @@ static inline WamrSandboxCallbackSlot wamr_get_callback_slot(
   auto func_ptrs = (void**)inst_aot->func_ptrs.ptr;
   auto func_types = (uint32_t*)inst_aot->func_type_indexes.ptr;
 
-  for (uint64_t idx = indirect_func_table_start, i = 0; idx < indirect_func_table_end;
+  for (uint64_t idx = indirect_func_table_start, i = 0;
+       idx < indirect_func_table_end;
        idx++, i++) {
     void* curr_func_ptr = func_ptrs[idx];
     if (curr_func_ptr == reserved_pointer) {
@@ -109,7 +110,7 @@ static inline void* wamr_lookup_func_raw_ptr(WamrSandboxInstance* sbx,
 }
 
 static inline void* wamr_lookup_func_raw_ptr_idx(WamrSandboxInstance* sbx,
-                                             uint32_t func_idx)
+                                                 uint32_t func_idx)
 {
   auto inst_aot = (AOTModuleInstance*)sbx->instance->inst_comm_rt;
 
@@ -134,7 +135,8 @@ static uint32_t wamr_compute_callback_table_offset(WamrSandboxInstance* sbx)
 {
   const std::string func_name = "sandboxReservedCallbackSlot1";
   auto func_slot = wamr_lookup_function(sbx, func_name.c_str());
-  uint32_t expected_index = wamr_run_function_return_u32(sbx, func_slot, 0, nullptr);
+  uint32_t expected_index =
+    wamr_run_function_return_u32(sbx, func_slot, 0, nullptr);
   void* reserved_pointer = wamr_lookup_func_raw_ptr(sbx, func_name);
 
   auto m = (AOTModule*)*(sbx->wasm_module);
@@ -145,7 +147,8 @@ static uint32_t wamr_compute_callback_table_offset(WamrSandboxInstance* sbx)
 
   auto func_ptrs = (void**)inst_aot->func_ptrs.ptr;
 
-  for (uint64_t idx = indirect_func_table_start, i = 0; idx < indirect_func_table_end;
+  for (uint64_t idx = indirect_func_table_start, i = 0;
+       idx < indirect_func_table_end;
        idx++, i++) {
     void* curr_func_ptr = func_ptrs[idx];
     if (curr_func_ptr == reserved_pointer) {
@@ -158,13 +161,15 @@ static uint32_t wamr_compute_callback_table_offset(WamrSandboxInstance* sbx)
 
 static inline void wamr_initialize_callback_slots(WamrSandboxInstance* sbx)
 {
-  const uint32_t callback_table_offset = wamr_compute_callback_table_offset(sbx);
+  const uint32_t callback_table_offset =
+    wamr_compute_callback_table_offset(sbx);
   const std::string prefix = "sandboxReservedCallbackSlot";
 
   for (size_t i = 1; i <= 128; i++) {
     const std::string func_name = prefix + std::to_string(i);
     void* raw_ptr = wamr_lookup_func_raw_ptr(sbx, func_name);
-    WamrSandboxCallbackSlot slot = wamr_get_callback_slot(sbx, raw_ptr, callback_table_offset);
+    WamrSandboxCallbackSlot slot =
+      wamr_get_callback_slot(sbx, raw_ptr, callback_table_offset);
     sbx->free_callback_slots.push_back(slot);
   }
 }
@@ -205,7 +210,8 @@ WamrSandboxInstance* wamr_load_module(const char* wamr_module_path)
   return ret;
 }
 
-void wamr_drop_module(WamrSandboxInstance *inst) {
+void wamr_drop_module(WamrSandboxInstance* inst)
+{
   wasm_instance_delete(inst->instance);
   wasm_module_delete(inst->wasm_module);
   wasm_store_delete(inst->store);
@@ -470,19 +476,22 @@ void wamr_unregister_callback(WamrSandboxInstance* inst, uint32_t slot_num)
   *slot.func_ptr_slot = nullptr;
 }
 
-uint32_t wamr_register_internal_callback(WamrSandboxInstance* inst, WamrFunctionSignature csig, const void* func_ptr)
+uint32_t wamr_register_internal_callback(WamrSandboxInstance* inst,
+                                         WamrFunctionSignature csig,
+                                         const void* func_ptr)
 {
-  auto func_slot = (wasm_func_t*) func_ptr;
+  auto func_slot = (wasm_func_t*)func_ptr;
 
   auto inst_aot = (AOTModuleInstance*)inst->instance->inst_comm_rt;
-  auto func_comm_rt = ((AOTFunctionInstance*)inst_aot->export_funcs.ptr) + func_slot->func_idx_rt;
+  auto func_comm_rt =
+    ((AOTFunctionInstance*)inst_aot->export_funcs.ptr) + func_slot->func_idx_rt;
 
   DYN_CHECK(!func_comm_rt->is_import_func,
-                "Expected reserved callback slot to not be imported");
+            "Expected reserved callback slot to not be imported");
   void* raw_func_ptr = func_comm_rt->u.func.func_ptr;
 
   auto iter = inst->internal_callbacks.find(raw_func_ptr);
-  if(iter != inst->internal_callbacks.end()){
+  if (iter != inst->internal_callbacks.end()) {
     // already created internal callback
     return iter->second;
   }
