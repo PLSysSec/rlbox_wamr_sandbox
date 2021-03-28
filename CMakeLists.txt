@@ -213,9 +213,12 @@ add_custom_command(OUTPUT ${GLUE_LIB_WASM} ${GLUE_LIB_SO}
 
 add_custom_target(glue_lib_wasm ALL DEPENDS wamr_release ${GLUE_LIB_WASM} ${GLUE_LIB_SO})
 
+find_package(Threads REQUIRED)
+
+# Tests executables ###################
+
 add_executable(test_rlbox_glue test/test_wamr_sandbox_glue_main.cpp
-                               test/test_wamr_sandbox_glue.cpp
-                               test/test_wamr_sandbox_glue_embedder_vars.cpp)
+                               test/test_wamr_sandbox_glue.cpp)
 target_include_directories(test_rlbox_glue PUBLIC include)
 target_include_directories(test_rlbox_glue
                            PUBLIC ${rlbox_SOURCE_DIR}/code/include)
@@ -223,8 +226,6 @@ target_include_directories(test_rlbox_glue
                            PUBLIC ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue)
 target_include_directories(test_rlbox_glue
                            PUBLIC ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib)
-
-find_package(Threads REQUIRED)
 
 target_compile_definitions(test_rlbox_glue PUBLIC
                            GLUE_LIB_WAMR_PATH="${GLUE_LIB_SO}")
@@ -242,7 +243,35 @@ if(UNIX AND NOT (${CMAKE_SYSTEM_NAME} MATCHES "Darwin"))
 endif()
 catch_discover_tests(test_rlbox_glue)
 
+####
+
+add_executable(test_rlbox_glue_embed test/test_wamr_sandbox_glue_main.cpp
+                                     test/test_wamr_sandbox_glue_embedder_vars.cpp)
+target_include_directories(test_rlbox_glue_embed PUBLIC include)
+target_include_directories(test_rlbox_glue_embed
+                           PUBLIC ${rlbox_SOURCE_DIR}/code/include)
+target_include_directories(test_rlbox_glue_embed
+                           PUBLIC ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue)
+target_include_directories(test_rlbox_glue_embed
+                           PUBLIC ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib)
+
+target_compile_definitions(test_rlbox_glue_embed PUBLIC
+                           GLUE_LIB_WAMR_PATH="${GLUE_LIB_SO}")
+
+target_link_libraries(test_rlbox_glue_embed
+                      Catch2::Catch2
+                      ${LINK_WAMR_LIB}
+                      ${CMAKE_THREAD_LIBS_INIT}
+                      ${CMAKE_DL_LIBS}
+                      wamr_sandbox
+                      )
+
+if(UNIX AND NOT (${CMAKE_SYSTEM_NAME} MATCHES "Darwin"))
+  target_link_libraries(test_rlbox_glue_embed rt)
+endif()
+catch_discover_tests(test_rlbox_glue_embed)
+
 # Shortcuts ###################
 
 add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} -V)
-add_dependencies(check test_rlbox_glue glue_lib_wasm)
+add_dependencies(check test_rlbox_glue test_rlbox_glue_embed glue_lib_wasm)
