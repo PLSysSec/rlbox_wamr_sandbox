@@ -216,6 +216,7 @@ void wamr_drop_module(WamrSandboxInstance* inst)
   wasm_module_delete(inst->wasm_module);
   wasm_store_delete(inst->store);
   wasm_engine_delete(inst->engine);
+  delete inst;
 }
 
 void* wamr_get_heap_base(WamrSandboxInstance* inst)

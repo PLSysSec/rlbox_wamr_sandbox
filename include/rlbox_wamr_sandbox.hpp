@@ -446,7 +446,6 @@ private:
   {
     // Class return types as promoted to args
     constexpr bool promoted = std::is_class_v<T_Ret>;
-    int32_t type_index;
 
     if constexpr (promoted) {
       WamrValueType ret_type = WamrValueType::WamrValueType_Void;
@@ -497,9 +496,7 @@ protected:
   // Set external_loads_exist to true, if the host application loads the
   // library wamr_module_path outside of rlbox_wamr_sandbox such as via dlopen
   // or the Windows equivalent
-  inline void impl_create_sandbox(const char* wamr_module_path,
-                                  bool external_loads_exist,
-                                  bool allow_stdio)
+  inline void impl_create_sandbox(const char* wamr_module_path)
   {
     detail::dynamic_check(sandbox == nullptr, "Sandbox already initialized");
     sandbox = wamr_load_module(wamr_module_path);
@@ -522,15 +519,6 @@ protected:
     free_index = impl_lookup_symbol("free");
 
     // set_callbacks_slots_ref(external_loads_exist);
-  }
-
-  inline void impl_create_sandbox(const char* wamr_module_path)
-  {
-    // Default is to assume that no external code will load the wasm library as
-    // this is usually the case
-    const bool external_loads_exist = false;
-    const bool allow_stdio = true;
-    impl_create_sandbox(wamr_module_path, external_loads_exist, allow_stdio);
   }
 
   inline void impl_destroy_sandbox()

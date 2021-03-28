@@ -37,18 +37,6 @@ file(GLOB_RECURSE
 # Dev Tools ###################
 
 if(DEV)
-  if(MSVC)
-    add_compile_options(/W4) # warnings
-    add_compile_options(/WX) # warnings as errors
-  else()
-    add_compile_options(-Wall -Wextra -pedantic) # warnings
-    add_compile_options(-Werror) # warnings as errors
-    add_compile_options(-fsanitize=address)
-    add_link_options(-fsanitize=address)
-    add_compile_options(-fsanitize=undefined)
-    add_link_options(-fsanitize=undefined)
-  endif()
-
   find_program(CLANG_TIDY "clang-tidy")
   if(CLANG_TIDY)
     # Config in .clang-tidy
@@ -174,6 +162,20 @@ target_include_directories(wamr_sandbox
 
 # Tests ###################
 
+if(DEV)
+  if(MSVC)
+    add_compile_options(/W4) # warnings
+    add_compile_options(/WX) # warnings as errors
+  else()
+    add_compile_options(-Wall -Wextra -pedantic) # warnings
+    add_compile_options(-Werror) # warnings as errors
+    add_compile_options(-fsanitize=address)
+    add_link_options(-fsanitize=address)
+    add_compile_options(-fsanitize=undefined)
+    add_link_options(-fsanitize=undefined)
+  endif()
+endif()
+
 include(CTest)
 include(Catch)
 
@@ -213,7 +215,6 @@ add_custom_target(glue_lib_wasm ALL DEPENDS wamr_release ${GLUE_LIB_WASM} ${GLUE
 
 add_executable(test_rlbox_glue test/test_wamr_sandbox_glue_main.cpp
                                test/test_wamr_sandbox_glue.cpp
-                               test/test_wamr_sandbox_glue_preload.cpp
                                test/test_wamr_sandbox_glue_embedder_vars.cpp)
 target_include_directories(test_rlbox_glue PUBLIC include)
 target_include_directories(test_rlbox_glue
