@@ -238,6 +238,7 @@ public:
 private:
   WamrSandboxInstance* sandbox = nullptr;
   uintptr_t heap_base;
+  uintptr_t exec_env = 0;
   void* malloc_index = 0;
   void* free_index = 0;
   size_t return_slot_size = 0;
@@ -515,10 +516,9 @@ protected:
                           "Sandbox heap not aligned to 4GB");
 
     // cache these for performance
+    exec_env = wamr_get_func_call_env_param(sandbox);
     malloc_index = impl_lookup_symbol("malloc");
     free_index = impl_lookup_symbol("free");
-
-    // set_callbacks_slots_ref(external_loads_exist);
   }
 
   inline void impl_destroy_sandbox()
@@ -654,15 +654,38 @@ protected:
     auto& thread_data = *get_rlbox_wamr_sandbox_thread_data();
 #endif
     thread_data.sandbox = this;
-    void* func_ptr_void = reinterpret_cast<void*>(func_ptr);
-    // Add one as the return value may require an arg slot for structs
-    T_PointerType allocations[1 + sizeof...(params)];
-    WamrValue args[1 + sizeof...(params)];
-    serialize_return_and_args(
-      &(allocations[0]), &(args[0]), func_ptr, std::forward<T_Args>(params)...);
+    wamr_set_curr_instance(sandbox);
 
+    // WASM functions are mangled in the following manner
+    // 1. All primitive types are left as is and follow an LP32 machine model
+    // (as opposed to the possibly 64-bit application)
+    // 2. All pointers are changed to u32 types
+    // 3. Returned class are returned as an out parameter before the actual
+    // function parameters
+    // 4. All class parameters are passed as pointers (u32 types)
+    // 5. The heap address is passed in as the first argument to the function
+    //
+    // RLBox accounts for the first 2 differences in T_Converted type, but we
+    // need to handle the rest
+
+    // Handle point 3
     using T_Ret = wamr_detail::return_argument<T_Converted>;
-    constexpr size_t alloc_length = (std::is_class_v<T_Ret> ? 1 : 0) + [&]() {
+    if constexpr (std::is_class_v<T_Ret>) {
+      using T_Conv1 = wamr_detail::change_return_type<T_Converted, void>;
+      using T_Conv2 = wamr_detail::prepend_arg_type<T_Conv1, T_PointerType>;
+      auto func_ptr_conv =
+        reinterpret_cast<T_Conv2*>(reinterpret_cast<uintptr_t>(func_ptr));
+      ensure_return_slot_size(sizeof(T_Ret));
+      impl_invoke_with_func_ptr<T>(func_ptr_conv, return_slot, params...);
+
+      auto ptr = reinterpret_cast<T_Ret*>(
+        impl_get_unsandboxed_pointer<T_Ret*>(return_slot));
+      T_Ret ret = *ptr;
+      return ret;
+    }
+
+    // Handle point 4
+    constexpr size_t alloc_length = [&] {
       if constexpr (sizeof...(params) > 0) {
         return ((std::is_class_v<T_Args> ? 1 : 0) + ...);
       } else {
@@ -670,51 +693,59 @@ protected:
       }
     }();
 
-    constexpr size_t arg_length =
-      sizeof...(params) + (std::is_class_v<T_Ret> ? 1 : 0);
+    // 0 arg functions create 0 length arrays which is not allowed
+    T_PointerType allocations_buff[alloc_length == 0 ? 1 : alloc_length];
+    T_PointerType* allocations = allocations_buff;
 
-    // struct returns are returned as pointers
-    using T_Wasm_Ret =
-      typename wamr_detail::convert_type_to_wasm_type<T_Ret>::type;
-
-    if constexpr (std::is_void_v<T_Wasm_Ret>) {
-      wamr_run_function_return_void(
-        sandbox, func_ptr_void, arg_length, &(args[0]));
-      for (size_t i = 0; i < alloc_length; i++) {
-        impl_free_in_sandbox(allocations[i]);
-      }
-      return;
-    } else {
-
-      T_Wasm_Ret ret;
-      if constexpr (std::is_class_v<T_Ret>) {
-        wamr_run_function_return_void(
-          sandbox, func_ptr_void, arg_length, &(args[0]));
-        ret = allocations[0];
-      } else if constexpr (std::is_same_v<T_Wasm_Ret, uint32_t>) {
-        ret = wamr_run_function_return_u32(
-          sandbox, func_ptr_void, arg_length, &(args[0]));
-      } else if constexpr (std::is_same_v<T_Wasm_Ret, uint64_t>) {
-        ret = wamr_run_function_return_u64(
-          sandbox, func_ptr_void, arg_length, &(args[0]));
-      } else if constexpr (std::is_same_v<T_Wasm_Ret, float>) {
-        ret = wamr_run_function_return_f32(
-          sandbox, func_ptr_void, arg_length, &(args[0]));
-      } else if constexpr (std::is_same_v<T_Wasm_Ret, double>) {
-        ret = wamr_run_function_return_f64(
-          sandbox, func_ptr_void, arg_length, &(args[0]));
+    auto serialize_class_arg =
+      [&](auto arg) -> std::conditional_t<std::is_class_v<decltype(arg)>,
+                                          T_PointerType,
+                                          decltype(arg)> {
+      using T_Arg = decltype(arg);
+      if constexpr (std::is_class_v<T_Arg>) {
+        auto slot = impl_malloc_in_sandbox(sizeof(T_Arg));
+        auto ptr =
+          reinterpret_cast<T_Arg*>(impl_get_unsandboxed_pointer<T_Arg*>(slot));
+        *ptr = arg;
+        allocations[0] = slot;
+        allocations++;
+        return slot;
       } else {
-        static_assert(wamr_detail::false_v<T_Wasm_Ret>,
-                      "Unknown invoke return type");
+        return arg;
       }
+    };
 
-      auto serialized_ret = serialize_to_sandbox<T_Ret>(ret);
-      // free only after serializing return, as return values such as structs
-      // are returned as pointers which we must free
-      for (size_t i = 0; i < alloc_length; i++) {
-        impl_free_in_sandbox(allocations[i]);
-      }
-      return serialized_ret;
+    // 0 arg functions don't use serialize
+    RLBOX_WAMR_UNUSED(serialize_class_arg);
+
+    using T_ConvNoClass =
+      wamr_detail::change_class_arg_types<T_Converted, T_PointerType>;
+
+    // Handle Point 5
+    using T_ConvHeap = wamr_detail::prepend_arg_type<T_ConvNoClass, uintptr_t>;
+
+    // Function invocation
+    auto func_ptr_conv =
+      reinterpret_cast<T_ConvHeap*>(reinterpret_cast<uintptr_t>(func_ptr));
+
+    using T_NoVoidRet =
+      std::conditional_t<std::is_void_v<T_Ret>, uint32_t, T_Ret>;
+    T_NoVoidRet ret;
+
+    if constexpr (std::is_void_v<T_Ret>) {
+      RLBOX_WAMR_UNUSED(ret);
+      func_ptr_conv(exec_env, serialize_class_arg(params)...);
+    } else {
+      ret = func_ptr_conv(exec_env, serialize_class_arg(params)...);
+    }
+
+    for (size_t i = 0; i < alloc_length; i++) {
+      impl_free_in_sandbox(allocations_buff[i]);
+    }
+
+    wamr_clear_curr_instance(sandbox);
+    if constexpr (!std::is_void_v<T_Ret>) {
+      return ret;
     }
   }
 

@@ -17,5 +17,4 @@ RLBOX_WAMR_SANDBOX_STATIC_VARIABLES();
 // NOLINTNEXTLINE
 #define CreateSandbox(sandbox) sandbox.create_sandbox(GLUE_LIB_WAMR_PATH)
 // NOLINTNEXTLINE
-#define BENCHMARK_CUSTOM_ITERATIONS 10000
 #include "test_sandbox_glue.inc.cpp"

@@ -60,10 +60,7 @@ double wamr_run_function_return_f64(WamrSandboxInstance *inst,
                                      void* func_ptr, int argc,
                                      WamrValue *argv);
 
-// uintptr_t wamr_get_reserved_callback_slot_val(void *inst,
-//                                                uint32_t slot_number);
-// WamrFunctionTable wamr_get_function_pointer_table(void *inst);
-// int32_t wamr_get_function_type_index(void *inst, WamrFunctionSignature csig);
+uintptr_t wamr_get_func_call_env_param(WamrSandboxInstance* inst);
 
 uint32_t wamr_register_callback(WamrSandboxInstance* inst, WamrFunctionSignature csig, const void* func_ptr);
 uint32_t wamr_register_internal_callback(WamrSandboxInstance* inst, WamrFunctionSignature csig, const void* func_ptr);

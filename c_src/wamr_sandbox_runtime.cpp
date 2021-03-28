@@ -30,7 +30,7 @@ struct WamrSandboxInstance
   wasm_store_t* store;
   wasm_module_t* wasm_module;
   wasm_instance_t* instance;
-  std::map<const std::string, uint32_t> symbol_map;
+  WASMExecEnv* exec_env;
   std::mutex callback_slot_mutex;
   std::deque<WamrSandboxCallbackSlot> free_callback_slots;
   std::map<uint32_t, WamrSandboxCallbackSlot> used_callback_slots;
@@ -90,15 +90,15 @@ static inline WamrSandboxCallbackSlot wamr_get_callback_slot(
   DYN_CHECK(false, "Could not locate reserved callback pointer");
 }
 
-static inline void* wamr_lookup_func_raw_ptr(WamrSandboxInstance* sbx,
-                                             std::string func_name)
+void* wamr_lookup_function(WamrSandboxInstance* sbx,
+                               const char* func_name)
 {
   auto inst_aot = (AOTModuleInstance*)sbx->instance->inst_comm_rt;
 
   for (size_t i = 0; i < inst_aot->export_func_count; i++) {
     auto func_comm_rt = ((AOTFunctionInstance*)inst_aot->export_funcs.ptr) + i;
 
-    if (func_name == func_comm_rt->func_name) {
+    if (strcmp(func_name, func_comm_rt->func_name) == 0) {
       DYN_CHECK(!func_comm_rt->is_import_func,
                 "Expected reserved callback slot to not be imported");
       void* raw_pointer = func_comm_rt->u.func.func_ptr;
@@ -109,23 +109,39 @@ static inline void* wamr_lookup_func_raw_ptr(WamrSandboxInstance* sbx,
   DYN_CHECK(false, "Could not find raw pointer for function");
 }
 
-static inline void* wamr_lookup_func_raw_ptr_idx(WamrSandboxInstance* sbx,
-                                                 uint32_t func_idx)
+static inline wasm_func_t* wamr_lookup_function_metadata(WamrSandboxInstance* inst, const char* fn_name)
 {
-  auto inst_aot = (AOTModuleInstance*)sbx->instance->inst_comm_rt;
+  auto inst_aot = (AOTModuleInstance*)inst->instance->inst_comm_rt;
+  bool found = false;
+  size_t idx = 0;
 
   for (size_t i = 0; i < inst_aot->export_func_count; i++) {
     auto func_comm_rt = ((AOTFunctionInstance*)inst_aot->export_funcs.ptr) + i;
-
-    if (func_idx == func_comm_rt->func_index) {
-      DYN_CHECK(!func_comm_rt->is_import_func,
-                "Expected reserved callback slot to not be imported");
-      void* raw_pointer = func_comm_rt->u.func.func_ptr;
-      return raw_pointer;
+    if (strcmp(func_comm_rt->func_name, fn_name) == 0)
+    {
+      found = true;
+      idx = i;
+      break;
     }
   }
 
-  DYN_CHECK(false, "Could not find raw pointer for function");
+  DYN_CHECK(found, "Could not find symbol");
+
+  auto& exports = *inst->instance->exports;
+  wasm_func_t* ret = nullptr;
+
+  for (size_t i = 0; i < exports.size; i++) {
+    if (exports.data[i]) {
+      auto func = wasm_extern_as_func(exports.data[i]);
+      if (func && func->func_idx_rt == idx) {
+        ret = func;
+        break;
+      }
+    }
+  }
+
+  DYN_CHECK(ret != nullptr, "Could not find export with index");
+  return ret;
 }
 
 // The callback table indexes are offset in some unspecified way
@@ -133,11 +149,11 @@ static inline void* wamr_lookup_func_raw_ptr_idx(WamrSandboxInstance* sbx,
 // Compute this offset
 static uint32_t wamr_compute_callback_table_offset(WamrSandboxInstance* sbx)
 {
-  const std::string func_name = "sandboxReservedCallbackSlot1";
-  auto func_slot = wamr_lookup_function(sbx, func_name.c_str());
+  const char* func_name = "sandboxReservedCallbackSlot1";
+  wasm_func_t* func_slot = wamr_lookup_function_metadata(sbx, func_name);
   uint32_t expected_index =
     wamr_run_function_return_u32(sbx, func_slot, 0, nullptr);
-  void* reserved_pointer = wamr_lookup_func_raw_ptr(sbx, func_name);
+  void* reserved_pointer = wamr_lookup_function(sbx, func_name);
 
   auto m = (AOTModule*)*(sbx->wasm_module);
   auto inst_aot = (AOTModuleInstance*)sbx->instance->inst_comm_rt;
@@ -167,7 +183,7 @@ static inline void wamr_initialize_callback_slots(WamrSandboxInstance* sbx)
 
   for (size_t i = 1; i <= 128; i++) {
     const std::string func_name = prefix + std::to_string(i);
-    void* raw_ptr = wamr_lookup_func_raw_ptr(sbx, func_name);
+    void* raw_ptr = wamr_lookup_function(sbx, func_name.c_str());
     WamrSandboxCallbackSlot slot =
       wamr_get_callback_slot(sbx, raw_ptr, callback_table_offset);
     sbx->free_callback_slots.push_back(slot);
@@ -198,10 +214,15 @@ WamrSandboxInstance* wamr_load_module(const char* wamr_module_path)
   ret->instance = instance;
 
   auto inst_aot = (AOTModuleInstance*)instance->inst_comm_rt;
-  for (size_t i = 0; i < inst_aot->export_func_count; i++) {
-    auto func_comm_rt = ((AOTFunctionInstance*)inst_aot->export_funcs.ptr) + i;
-    ret->symbol_map[func_comm_rt->func_name] = i;
-  }
+
+  // Backtrace support (WAMR_BUILD_DUMP_CALL_STACK) is disabled as this adds a
+  // lot of code to the TCB for very little gain. We should be able to set this
+  // to zero, but its not clear that the wamr runtime would be ok with this. Set
+  // this to something small so that any attempt to use this stack will fault.
+  const uint32_t backtrace_stack_size = 1;
+  auto exec_env = wasm_exec_env_create((WASMModuleInstanceCommon*)inst_aot, backtrace_stack_size);
+  DYN_CHECK(exec_env != nullptr, "Could not create wasm exec_env");
+  ret->exec_env = exec_env;
 
   wamr_initialize_callback_slots(ret);
 
@@ -212,6 +233,7 @@ WamrSandboxInstance* wamr_load_module(const char* wamr_module_path)
 
 void wamr_drop_module(WamrSandboxInstance* inst)
 {
+  wasm_exec_env_destroy(inst->exec_env);
   wasm_instance_delete(inst->instance);
   wasm_module_delete(inst->wasm_module);
   wasm_store_delete(inst->store);
@@ -236,31 +258,6 @@ size_t wamr_get_heap_size(WamrSandboxInstance* inst)
 {
   const size_t gb = 1 * 1024 * 1024 * 1024;
   return 4 * gb;
-}
-
-void* wamr_lookup_function(WamrSandboxInstance* inst, const char* fn_name)
-{
-  auto& symbol_map = inst->symbol_map;
-  auto tmp = symbol_map.size();
-  auto iter = symbol_map.find(std::string(fn_name));
-  DYN_CHECK(iter != symbol_map.end(), "Could not find symbol");
-  auto idx = iter->second;
-
-  auto& exports = *inst->instance->exports;
-  wasm_func_t* ret = nullptr;
-
-  for (size_t i = 0; i < exports.size; i++) {
-    if (exports.data[i]) {
-      auto func = wasm_extern_as_func(exports.data[i]);
-      if (func && func->func_idx_rt == idx) {
-        ret = func;
-        break;
-      }
-    }
-  }
-
-  DYN_CHECK(ret != nullptr, "Could not find export with index");
-  return ret;
 }
 
 void wamr_set_curr_instance(WamrSandboxInstance* inst) {}
@@ -300,6 +297,10 @@ static std::optional<wasm_val_t> wamr_run_function_helper(
   } else {
     return {};
   }
+}
+
+uintptr_t wamr_get_func_call_env_param(WamrSandboxInstance* inst) {
+  return (uintptr_t) inst->exec_env;
 }
 
 void wamr_run_function_return_void(WamrSandboxInstance* inst_ptr,
@@ -477,26 +478,17 @@ void wamr_unregister_callback(WamrSandboxInstance* inst, uint32_t slot_num)
   *slot.func_ptr_slot = nullptr;
 }
 
+
 uint32_t wamr_register_internal_callback(WamrSandboxInstance* inst,
                                          WamrFunctionSignature csig,
                                          const void* func_ptr)
 {
-  auto func_slot = (wasm_func_t*)func_ptr;
-
-  auto inst_aot = (AOTModuleInstance*)inst->instance->inst_comm_rt;
-  auto func_comm_rt =
-    ((AOTFunctionInstance*)inst_aot->export_funcs.ptr) + func_slot->func_idx_rt;
-
-  DYN_CHECK(!func_comm_rt->is_import_func,
-            "Expected reserved callback slot to not be imported");
-  void* raw_func_ptr = func_comm_rt->u.func.func_ptr;
-
-  auto iter = inst->internal_callbacks.find(raw_func_ptr);
+  auto iter = inst->internal_callbacks.find(const_cast<void*>(func_ptr));
   if (iter != inst->internal_callbacks.end()) {
     // already created internal callback
     return iter->second;
   }
 
-  auto ret = wamr_register_callback(inst, csig, raw_func_ptr);
+  auto ret = wamr_register_callback(inst, csig, func_ptr);
   return ret;
 }

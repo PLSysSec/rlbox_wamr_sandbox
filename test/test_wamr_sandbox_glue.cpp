@@ -15,5 +15,4 @@
 // NOLINTNEXTLINE
 #define CreateSandbox(sandbox) sandbox.create_sandbox(GLUE_LIB_WAMR_PATH)
 // NOLINTNEXTLINE
-#define BENCHMARK_CUSTOM_ITERATIONS 10000
 #include "test_sandbox_glue.inc.cpp"
