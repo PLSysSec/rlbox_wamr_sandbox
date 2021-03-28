@@ -131,6 +131,7 @@ add_custom_command(OUTPUT "${WAMR_PATH}"
                    COMMAND ./build_llvm.sh
                    COMMAND ${CMAKE_COMMAND}
                            ${WAMR_PARAM}
+                           -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
                            -S
                            .
                            -B
@@ -141,7 +142,7 @@ add_custom_command(OUTPUT "${WAMR_PATH}"
                            ./build
                            --target
                            all
-                   COMMENT "Building wamrc compiler and runtime")
+                   COMMENT "Building wamrc compiler")
 
 add_custom_target(wamr_release ALL DEPENDS ${WAMR_PATH})
 
