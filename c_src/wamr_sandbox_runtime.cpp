@@ -37,6 +37,8 @@ struct WamrSandboxInstance
   std::map<void*, uint32_t> internal_callbacks;
 };
 
+static std::mutex wamr_sandbox_create_mutex;
+
 static inline wasm_byte_vec_t wamr_get_vec_from_file(
   const char* wamr_module_path)
 {
@@ -107,51 +109,19 @@ void* wamr_lookup_function(WamrSandboxInstance* sbx,
   DYN_CHECK(false, "Could not find raw pointer for function");
 }
 
-static inline wasm_func_t* wamr_lookup_function_metadata(WamrSandboxInstance* inst, const char* fn_name)
-{
-  auto inst_aot = (AOTModuleInstance*)inst->instance->inst_comm_rt;
-  bool found = false;
-  size_t idx = 0;
-
-  for (size_t i = 0; i < inst_aot->export_func_count; i++) {
-    auto func_comm_rt = ((AOTFunctionInstance*)inst_aot->export_funcs.ptr) + i;
-    if (strcmp(func_comm_rt->func_name, fn_name) == 0)
-    {
-      found = true;
-      idx = i;
-      break;
-    }
-  }
-
-  DYN_CHECK(found, "Could not find symbol");
-
-  auto& exports = *inst->instance->exports;
-  wasm_func_t* ret = nullptr;
-
-  for (size_t i = 0; i < exports.size; i++) {
-    if (exports.data[i]) {
-      auto func = wasm_extern_as_func(exports.data[i]);
-      if (func && func->func_idx_rt == idx) {
-        ret = func;
-        break;
-      }
-    }
-  }
-
-  DYN_CHECK(ret != nullptr, "Could not find export with index");
-  return ret;
-}
-
 // The callback table indexes are offset in some unspecified way
 // What looks like index 3 to the host seems to be index 1 to the sbx
 // Compute this offset
 static uint32_t wamr_compute_callback_table_offset(WamrSandboxInstance* sbx)
 {
   const char* func_name = "sandboxReservedCallbackSlot1";
-  wasm_func_t* func_slot = wamr_lookup_function_metadata(sbx, func_name);
-  uint32_t expected_index =
-    wamr_run_function_return_u32(sbx, func_slot, 0, nullptr);
+  // wasm_func_t* func_slot = wamr_lookup_function_metadata(sbx, func_name);
+  // uint32_t expected_index =
+  //   wamr_run_function_return_u32(sbx, func_slot, 0, nullptr);
   void* reserved_pointer = wamr_lookup_function(sbx, func_name);
+  using fn_cb_t = uint32_t (*)(uintptr_t);
+  auto fn_ptr = (fn_cb_t) reserved_pointer;
+  uint32_t expected_index = fn_ptr(wamr_get_func_call_env_param(sbx));
 
   auto m = (AOTModule*)*(sbx->wasm_module);
   auto inst_aot = (AOTModuleInstance*)sbx->instance->inst_comm_rt;
@@ -190,6 +160,8 @@ static inline void wamr_initialize_callback_slots(WamrSandboxInstance* sbx)
 
 WamrSandboxInstance* wamr_load_module(const char* wamr_module_path)
 {
+  const std::lock_guard<std::mutex> lock(wamr_sandbox_create_mutex);
+
   WamrSandboxInstance* ret = new WamrSandboxInstance();
 
   auto engine = wasm_engine_new();
@@ -231,6 +203,8 @@ WamrSandboxInstance* wamr_load_module(const char* wamr_module_path)
 
 void wamr_drop_module(WamrSandboxInstance* inst)
 {
+  const std::lock_guard<std::mutex> lock(wamr_sandbox_create_mutex);
+
   wasm_exec_env_destroy(inst->exec_env);
   wasm_instance_delete(inst->instance);
   wasm_module_delete(inst->wasm_module);
@@ -261,94 +235,8 @@ size_t wamr_get_heap_size(WamrSandboxInstance* inst)
 void wamr_set_curr_instance(WamrSandboxInstance* inst) {}
 void wamr_clear_curr_instance(WamrSandboxInstance* inst) {}
 
-static std::optional<wasm_val_t> wamr_run_function_helper(
-  WamrSandboxInstance* inst,
-  void* func_ptr,
-  uint32_t argc,
-  WamrValue* argv)
-{
-  auto f = (wasm_func_t*)func_ptr;
-
-  DYN_CHECK(argc == f->func_type->params->num_elems,
-            "Wrong number of arguments");
-
-  auto result_count = f->func_type->results->num_elems;
-  DYN_CHECK(result_count == 0 || result_count == 1,
-            "Multiple results not supported");
-
-  wasm_val_t args[argc == 0 ? 1 : argc];
-
-  for (int i = 0; i < argc; i++) {
-    // enums are the same for first 4 members --- i32, i64, f32, f64
-    args[i].kind = (wasm_valkind_enum)argv[i].val_type;
-    // union is at most 64-bits
-    args[i].of.i64 = (int64_t)argv[i].u64;
-  }
-
-  wasm_val_t result;
-  auto trap = wasm_func_call(f, args, &result);
-
-  DYN_CHECK(trap == nullptr, "Wasm function trapped");
-
-  if (result_count == 1) {
-    return result;
-  } else {
-    return {};
-  }
-}
-
 uintptr_t wamr_get_func_call_env_param(WamrSandboxInstance* inst) {
   return (uintptr_t) inst->exec_env;
-}
-
-void wamr_run_function_return_void(WamrSandboxInstance* inst_ptr,
-                                   void* func_ptr,
-                                   uint32_t argc,
-                                   WamrValue* argv)
-{
-  auto ret = wamr_run_function_helper(inst_ptr, func_ptr, argc, argv);
-  DYN_CHECK(!ret.has_value(), "Expected void return");
-  return;
-}
-
-uint32_t wamr_run_function_return_u32(WamrSandboxInstance* inst_ptr,
-                                      void* func_ptr,
-                                      uint32_t argc,
-                                      WamrValue* argv)
-{
-  auto ret = wamr_run_function_helper(inst_ptr, func_ptr, argc, argv);
-  DYN_CHECK(ret.has_value() && ret->kind == WASM_I32, "Expected valid return");
-  return ret->of.i32;
-}
-
-uint64_t wamr_run_function_return_u64(WamrSandboxInstance* inst_ptr,
-                                      void* func_ptr,
-                                      uint32_t argc,
-                                      WamrValue* argv)
-{
-  auto ret = wamr_run_function_helper(inst_ptr, func_ptr, argc, argv);
-  DYN_CHECK(ret.has_value() && ret->kind == WASM_I64, "Expected valid return");
-  return ret->of.i64;
-}
-
-float wamr_run_function_return_f32(WamrSandboxInstance* inst_ptr,
-                                   void* func_ptr,
-                                   uint32_t argc,
-                                   WamrValue* argv)
-{
-  auto ret = wamr_run_function_helper(inst_ptr, func_ptr, argc, argv);
-  DYN_CHECK(ret.has_value() && ret->kind == WASM_F32, "Expected valid return");
-  return ret->of.f32;
-}
-
-double wamr_run_function_return_f64(WamrSandboxInstance* inst_ptr,
-                                    void* func_ptr,
-                                    uint32_t argc,
-                                    WamrValue* argv)
-{
-  auto ret = wamr_run_function_helper(inst_ptr, func_ptr, argc, argv);
-  DYN_CHECK(ret.has_value() && ret->kind == WASM_F64, "Expected valid return");
-  return ret->of.f64;
 }
 
 static inline bool wasm_type_matches(uint8 value_type,

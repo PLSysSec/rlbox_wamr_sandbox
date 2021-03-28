@@ -44,22 +44,6 @@ void* wamr_lookup_function(WamrSandboxInstance *inst,
 void wamr_set_curr_instance(WamrSandboxInstance *inst);
 void wamr_clear_curr_instance(WamrSandboxInstance *inst);
 
-void wamr_run_function_return_void(WamrSandboxInstance *inst,
-                                    void* func_ptr, uint32_t argc,
-                                    WamrValue *argv);
-uint32_t wamr_run_function_return_u32(WamrSandboxInstance *inst,
-                                       void* func_ptr, uint32_t argc,
-                                       WamrValue *argv);
-uint64_t wamr_run_function_return_u64(WamrSandboxInstance *inst,
-                                       void* func_ptr, uint32_t argc,
-                                       WamrValue *argv);
-float wamr_run_function_return_f32(WamrSandboxInstance *inst,
-                                    void* func_ptr, uint32_t argc,
-                                    WamrValue *argv);
-double wamr_run_function_return_f64(WamrSandboxInstance *inst,
-                                     void* func_ptr, uint32_t argc,
-                                     WamrValue *argv);
-
 uintptr_t wamr_get_func_call_env_param(WamrSandboxInstance* inst);
 
 uint32_t wamr_register_callback(WamrSandboxInstance* inst, WamrFunctionSignature csig, const void* func_ptr);
@@ -69,7 +53,6 @@ void wamr_unregister_callback(WamrSandboxInstance* inst, uint32_t slot);
 void *wamr_get_heap_base(WamrSandboxInstance *inst);
 size_t wamr_get_heap_size(WamrSandboxInstance *inst);
 uint32_t wamr_get_export_function_id(void *inst, void *unsandboxed_ptr);
-
 
 #ifdef __cplusplus
 }
