@@ -15,13 +15,13 @@ if(NOT DEFINED ENV{wasiclang_SOURCE_DIR})
   message(FATAL_ERROR "Set wasiclang_SOURCE_DIR environment variable")
 endif()
 
-if(NOT DEFINED ENV{WAMR_DIR})
-  message(FATAL_ERROR "Set WAMR_DIR environment variable")
+if(NOT DEFINED ENV{WAMR_COMPILER_DIR})
+  message(FATAL_ERROR "Set WAMR_COMPILER_DIR environment variable")
 endif()
 
 set(rlbox_SOURCE_DIR $ENV{rlbox_SOURCE_DIR})
 set(wasiclang_SOURCE_DIR $ENV{wasiclang_SOURCE_DIR})
-set(WAMR_DIR $ENV{WAMR_DIR})
+set(WAMR_COMPILER_DIR $ENV{WAMR_COMPILER_DIR})
 
 set(CMAKE_C_COMPILER ${wasiclang_SOURCE_DIR}/bin/clang)
 set(CMAKE_CXX_COMPILER ${wasiclang_SOURCE_DIR}/bin/clang++)
@@ -39,12 +39,19 @@ add_executable(glue_lib_wamr.wasm
                ${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib/libtest.c)
 
 set(GLUE_LIB_PATH "${CMAKE_BINARY_DIR}/glue_lib_wamr.aot")
+# For debuggging only
+set(GLUE_LIB_OBJ_PATH "${CMAKE_BINARY_DIR}/glue_lib_wamr.o")
 
 add_custom_command(OUTPUT ${GLUE_LIB_PATH}
                    DEPENDS glue_lib_wamr.wasm
-                   COMMAND ${WAMR_DIR}/wamrc
+                   COMMAND ${WAMR_COMPILER_DIR}/wamrc
                            -o
                            ${GLUE_LIB_PATH}
+                           glue_lib_wamr.wasm
+                    COMMAND ${WAMR_COMPILER_DIR}/wamrc
+                           --format=object
+                           -o
+                           ${GLUE_LIB_OBJ_PATH}
                            glue_lib_wamr.wasm
                    COMMENT "Compiling wasm file to native")
 

@@ -117,8 +117,8 @@ endif()
 
 # Wamr compiler and runtime ###################
 
-set(WAMR_DIR "${mod_wamr_SOURCE_DIR}/wamr-compiler/build/")
-set(WAMR_PATH "${WAMR_DIR}/wamrc")
+set(WAMR_COMPILER_DIR "${mod_wamr_SOURCE_DIR}/wamr-compiler/build/")
+set(WAMR_COMPILER_PATH "${WAMR_COMPILER_DIR}/wamrc")
 
 if(UNIX AND (${CMAKE_SYSTEM_NAME} MATCHES "Darwin"))
   set(WAMR_PARAM "-DWAMR_BUILD_TARGET=darwin")
@@ -126,7 +126,7 @@ else()
   set(WAMR_PARAM "")
 endif()
 
-add_custom_command(OUTPUT "${WAMR_PATH}"
+add_custom_command(OUTPUT "${WAMR_COMPILER_PATH}"
                    WORKING_DIRECTORY "${mod_wamr_SOURCE_DIR}/wamr-compiler"
                    COMMAND ./build_llvm.sh
                    COMMAND ${CMAKE_COMMAND}
@@ -144,15 +144,38 @@ add_custom_command(OUTPUT "${WAMR_PATH}"
                            all
                    COMMENT "Building wamrc compiler")
 
-add_custom_target(wamr_release ALL DEPENDS ${WAMR_PATH})
+add_custom_target(wamr_release ALL DEPENDS ${WAMR_COMPILER_PATH})
 
 # Wamr Lib ###################
 
 set (WAMR_ROOT_DIR ${mod_wamr_SOURCE_DIR})
-set (WAMR_BUILD_AOT 1)
 set (WAMR_BUILD_PLATFORM "linux")
+# WAMR_BUILD_TARGET --- let it default to current system
+set (WAMR_BUILD_INTERP 0)
+set (WAMR_BUILD_FAST_INTERP 0)
+set (WAMR_BUILD_AOT 1)
+set (WAMR_BUILD_JIT 0)
+set (WAMR_BUILD_LIBC_BUILTIN 0)
 set (WAMR_BUILD_LIBC_WASI 1)
-set (WASM_ENABLE_LIBC_WASI 1)
+set (WAMR_BUILD_LIBC_UVWASI 0)
+set (WAMR_BUILD_MULTI_MODULE 0)
+set (WAMR_BUILD_MINI_LOADER 0)
+# next 3 are multithreading support --- Disabled for now as this is crashing
+set (WAMR_BUILD_SHARED_MEMORY 0)
+set (WAMR_BUILD_THREAD_MGR 0)
+set (WAMR_BUILD_LIB_PTHREAD 0)
+set (WAMR_DISABLE_HW_BOUND_CHECK 0)
+set (WAMR_BUILD_TAIL_CALL 1)
+set (WAMR_BUILD_SIMD 1)
+# custom names seem to be used by interpretor only, but will enable it as it may be used in the future by aot
+set (WAMR_BUILD_CUSTOM_NAME_SECTION 1)
+# Backtrace support. Disable this as this adds a lot of code to the TCB for very little gain.
+set (WAMR_BUILD_DUMP_CALL_STACK 0)
+set (WAMR_BUILD_MEMORY_PROFILING 0)
+set (WAMR_BUILD_PERF_PROFILING 0)
+# WAMR_APP_THREAD_STACK_SIZE_MAX --- leave it as default
+# WAMR_BH_VPRINTF --- leave printf redirection unset
+
 include (${WAMR_ROOT_DIR}/build-scripts/runtime_lib.cmake)
 add_library(wamr_sandbox ${WAMR_RUNTIME_LIB_SOURCE}
                          ${CMAKE_SOURCE_DIR}/c_src/wamr_sandbox_runtime.cpp)
@@ -198,7 +221,7 @@ add_custom_command(OUTPUT ${GLUE_LIB_WASM} ${GLUE_LIB_SO}
                    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/c_src
                    COMMAND rlbox_SOURCE_DIR=${rlbox_SOURCE_DIR}
                            wasiclang_SOURCE_DIR=${wasiclang_SOURCE_DIR}
-                           WAMR_DIR=${WAMR_DIR}
+                           WAMR_COMPILER_DIR=${WAMR_COMPILER_DIR}
                            ${CMAKE_COMMAND}
                            -S
                            .
