@@ -37,8 +37,6 @@ struct WamrSandboxInstance
   std::map<void*, uint32_t> internal_callbacks;
 };
 
-static std::once_flag wamr_init;
-
 static inline wasm_byte_vec_t wamr_get_vec_from_file(
   const char* wamr_module_path)
 {
@@ -392,7 +390,7 @@ static inline bool wamr_signature_matches(AOTFuncType& func_type,
   }
 
   // don't support multi returns
-  if (func_type.result_count != 1) {
+  if (func_type.result_count > 1) {
     return false;
   }
 
