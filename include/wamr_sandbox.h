@@ -45,19 +45,19 @@ void wamr_set_curr_instance(WamrSandboxInstance *inst);
 void wamr_clear_curr_instance(WamrSandboxInstance *inst);
 
 void wamr_run_function_return_void(WamrSandboxInstance *inst,
-                                    void* func_ptr, int argc,
+                                    void* func_ptr, uint32_t argc,
                                     WamrValue *argv);
 uint32_t wamr_run_function_return_u32(WamrSandboxInstance *inst,
-                                       void* func_ptr, int argc,
+                                       void* func_ptr, uint32_t argc,
                                        WamrValue *argv);
 uint64_t wamr_run_function_return_u64(WamrSandboxInstance *inst,
-                                       void* func_ptr, int argc,
+                                       void* func_ptr, uint32_t argc,
                                        WamrValue *argv);
 float wamr_run_function_return_f32(WamrSandboxInstance *inst,
-                                    void* func_ptr, int argc,
+                                    void* func_ptr, uint32_t argc,
                                     WamrValue *argv);
 double wamr_run_function_return_f64(WamrSandboxInstance *inst,
-                                     void* func_ptr, int argc,
+                                     void* func_ptr, uint32_t argc,
                                      WamrValue *argv);
 
 uintptr_t wamr_get_func_call_env_param(WamrSandboxInstance* inst);

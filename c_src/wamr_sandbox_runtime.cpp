@@ -264,7 +264,7 @@ void wamr_clear_curr_instance(WamrSandboxInstance* inst) {}
 static std::optional<wasm_val_t> wamr_run_function_helper(
   WamrSandboxInstance* inst,
   void* func_ptr,
-  int argc,
+  uint32_t argc,
   WamrValue* argv)
 {
   auto f = (wasm_func_t*)func_ptr;
@@ -303,7 +303,7 @@ uintptr_t wamr_get_func_call_env_param(WamrSandboxInstance* inst) {
 
 void wamr_run_function_return_void(WamrSandboxInstance* inst_ptr,
                                    void* func_ptr,
-                                   int argc,
+                                   uint32_t argc,
                                    WamrValue* argv)
 {
   auto ret = wamr_run_function_helper(inst_ptr, func_ptr, argc, argv);
@@ -313,7 +313,7 @@ void wamr_run_function_return_void(WamrSandboxInstance* inst_ptr,
 
 uint32_t wamr_run_function_return_u32(WamrSandboxInstance* inst_ptr,
                                       void* func_ptr,
-                                      int argc,
+                                      uint32_t argc,
                                       WamrValue* argv)
 {
   auto ret = wamr_run_function_helper(inst_ptr, func_ptr, argc, argv);
@@ -323,7 +323,7 @@ uint32_t wamr_run_function_return_u32(WamrSandboxInstance* inst_ptr,
 
 uint64_t wamr_run_function_return_u64(WamrSandboxInstance* inst_ptr,
                                       void* func_ptr,
-                                      int argc,
+                                      uint32_t argc,
                                       WamrValue* argv)
 {
   auto ret = wamr_run_function_helper(inst_ptr, func_ptr, argc, argv);
@@ -333,7 +333,7 @@ uint64_t wamr_run_function_return_u64(WamrSandboxInstance* inst_ptr,
 
 float wamr_run_function_return_f32(WamrSandboxInstance* inst_ptr,
                                    void* func_ptr,
-                                   int argc,
+                                   uint32_t argc,
                                    WamrValue* argv)
 {
   auto ret = wamr_run_function_helper(inst_ptr, func_ptr, argc, argv);
@@ -343,7 +343,7 @@ float wamr_run_function_return_f32(WamrSandboxInstance* inst_ptr,
 
 double wamr_run_function_return_f64(WamrSandboxInstance* inst_ptr,
                                     void* func_ptr,
-                                    int argc,
+                                    uint32_t argc,
                                     WamrValue* argv)
 {
   auto ret = wamr_run_function_helper(inst_ptr, func_ptr, argc, argv);
@@ -394,11 +394,6 @@ static inline bool wamr_signature_matches(AOTFuncType& func_type,
     return false;
   }
 
-  uint64_t type_arr_size_1 =
-    ((uint64_t)func_type.param_count) + func_type.result_count;
-  uint64_t type_arr_size = offsetof(AOTFuncType, types) + type_arr_size_1;
-  uint8_t* types = func_type.types;
-
   for (uint32_t i = 0; i < func_type.param_count; i++) {
     if (!wasm_type_matches(func_type.types[i], csig.parameters[i])) {
       return false;
@@ -421,7 +416,6 @@ static inline uint32_t wamr_find_type_index(WamrSandboxInstance* inst,
                                             WamrFunctionSignature& csig)
 {
   auto m = (AOTModule*)*(inst->wasm_module);
-  auto inst_aot = (AOTModuleInstance*)inst->instance->inst_comm_rt;
 
   uint64_t func_type_count = m->func_type_count;
   AOTFuncType** func_types = m->func_types;
@@ -439,9 +433,6 @@ uint32_t wamr_register_callback(WamrSandboxInstance* inst,
                                 WamrFunctionSignature csig,
                                 const void* func_ptr)
 {
-  auto m = (AOTModule*)*(inst->wasm_module);
-  auto inst_aot = (AOTModuleInstance*)inst->instance->inst_comm_rt;
-
   uint32_t type_index = wamr_find_type_index(inst, csig);
 
   const std::lock_guard<std::mutex> lock(inst->callback_slot_mutex);
@@ -461,9 +452,6 @@ uint32_t wamr_register_callback(WamrSandboxInstance* inst,
 
 void wamr_unregister_callback(WamrSandboxInstance* inst, uint32_t slot_num)
 {
-  auto m = (AOTModule*)*(inst->wasm_module);
-  auto inst_aot = (AOTModuleInstance*)inst->instance->inst_comm_rt;
-
   const std::lock_guard<std::mutex> lock(inst->callback_slot_mutex);
   auto iter = inst->used_callback_slots.find(slot_num);
   DYN_CHECK(iter != inst->used_callback_slots.end(),
@@ -475,7 +463,6 @@ void wamr_unregister_callback(WamrSandboxInstance* inst, uint32_t slot_num)
 
   *slot.func_ptr_slot = nullptr;
 }
-
 
 uint32_t wamr_register_internal_callback(WamrSandboxInstance* inst,
                                          WamrFunctionSignature csig,
