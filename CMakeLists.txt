@@ -119,12 +119,14 @@ endif()
 
 set(WAMR_COMPILER_DIR "${mod_wamr_SOURCE_DIR}/wamr-compiler/build/")
 set(WAMR_COMPILER_PATH "${WAMR_COMPILER_DIR}/wamrc")
-
-if(UNIX AND (${CMAKE_SYSTEM_NAME} MATCHES "Darwin"))
-  set(WAMR_PARAM "-DWAMR_BUILD_TARGET=darwin")
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+  set (WAMR_BUILD_PLATFORM "darwin")
 else()
-  set(WAMR_PARAM "")
+  set (WAMR_BUILD_PLATFORM "linux")
 endif()
+set (WAMR_BUILD_TARGET "X86_64")
+
+set(WAMR_PARAM -DWAMR_BUILD_TARGET=${WAMR_BUILD_PLATFORM} -DWAMR_BUILD_TARGET=${WAMR_BUILD_TARGET})
 
 add_custom_command(OUTPUT "${WAMR_COMPILER_PATH}"
                    WORKING_DIRECTORY "${mod_wamr_SOURCE_DIR}/wamr-compiler"
@@ -140,6 +142,7 @@ add_custom_command(OUTPUT "${WAMR_COMPILER_PATH}"
                            ${CMAKE_COMMAND}
                            --build
                            ./build
+                           --parallel
                            --target
                            all
                    COMMENT "Building wamrc compiler")
@@ -149,8 +152,8 @@ add_custom_target(wamr_release ALL DEPENDS ${WAMR_COMPILER_PATH})
 # Wamr Lib ###################
 
 set (WAMR_ROOT_DIR ${mod_wamr_SOURCE_DIR})
-set (WAMR_BUILD_PLATFORM "linux")
-# WAMR_BUILD_TARGET --- let it default to current system
+# WAMR_BUILD_PLATFORM set earlier
+# WAMR_BUILD_TARGET set earlier
 set (WAMR_BUILD_INTERP 0)
 set (WAMR_BUILD_FAST_INTERP 0)
 set (WAMR_BUILD_AOT 1)
@@ -231,6 +234,7 @@ add_custom_command(OUTPUT ${GLUE_LIB_WASM} ${GLUE_LIB_SO}
                            ${CMAKE_COMMAND}
                            --build
                            ${CMAKE_BINARY_DIR}/wasm
+                           --parallel
                            --target
                            all
                    COMMENT "Building wasm library")

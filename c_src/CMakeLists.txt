@@ -45,6 +45,8 @@ set(GLUE_LIB_OBJ_PATH "${CMAKE_BINARY_DIR}/glue_lib_wamr.o")
 add_custom_command(OUTPUT ${GLUE_LIB_PATH}
                    DEPENDS glue_lib_wamr.wasm
                    COMMAND ${WAMR_COMPILER_DIR}/wamrc
+                           --target=x86_64
+                           --disable-simd
                            -o
                            ${GLUE_LIB_PATH}
                            glue_lib_wamr.wasm
