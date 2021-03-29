@@ -307,7 +307,8 @@ private:
   template<typename T_Ret, typename... T_FormalArgs, typename... T_ActualArgs>
   inline void serialize_args(T_PointerType* /* allocations */,
                              WamrValue* /* out_wamr_args */,
-                             T_Ret (*/* func_ptr */)(T_FormalArgs...),
+                             // param: func_ptr
+                             T_Ret (*)(T_FormalArgs...),
                              T_ActualArgs... /* args */)
   {
     static_assert(sizeof...(T_FormalArgs) == 0);
@@ -429,7 +430,8 @@ private:
 
   template<typename T_Ret, typename... T_Args>
   static inline constexpr unsigned int get_param_count(
-    T_Ret (*/* dummy for template inference */)(T_Args...) = nullptr)
+    //param: dummy for template inference
+    T_Ret (*)(T_Args...) = nullptr)
   {
     // Class return types as promoted to args
     constexpr bool promoted = std::is_class_v<T_Ret>;
@@ -443,7 +445,8 @@ private:
   template<typename T_Ret, typename... T_Args>
   inline WamrFunctionSignature get_wamr_signature(
     WamrValueType* param_types_buffer,
-    T_Ret (*/* dummy for template inference */)(T_Args...) = nullptr) const
+    //param: dummy for template inference
+    T_Ret (*)(T_Args...) = nullptr) const
   {
     // Class return types as promoted to args
     constexpr bool promoted = std::is_class_v<T_Ret>;
@@ -617,8 +620,8 @@ protected:
 
   static inline bool impl_is_in_same_sandbox(const void* p1, const void* p2)
   {
-    uintptr_t heap_base_mask = std::numeric_limits<uintptr_t>::max() &
-                               ~(std::numeric_limits<T_PointerType>::max());
+    auto sbx_ptr_mask = ~(std::numeric_limits<T_PointerType>::max());
+    uintptr_t heap_base_mask = std::numeric_limits<uintptr_t>::max() & sbx_ptr_mask;
     return (reinterpret_cast<uintptr_t>(p1) & heap_base_mask) ==
            (reinterpret_cast<uintptr_t>(p2) & heap_base_mask);
   }

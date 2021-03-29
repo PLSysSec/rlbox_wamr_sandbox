@@ -90,13 +90,19 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   FetchContent_Declare(
     wasiclang
     URL
-      https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-11/wasi-sdk-11.0-macos.tar.gz
+      https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-12/wasi-sdk-12.0-macos.tar.gz
+    )
+elseif(WIN32)
+  FetchContent_Declare(
+    wasiclang
+    URL
+      https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-12/wasi-sdk-12.0-mingw.tar.gz
     )
 else()
   FetchContent_Declare(
     wasiclang
     URL
-      https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-11/wasi-sdk-11.0-linux.tar.gz
+      https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-12/wasi-sdk-12.0-linux.tar.gz
     )
 endif()
 FetchContent_GetProperties(wasiclang)
@@ -115,13 +121,27 @@ endif()
 
 # set(mod_wamr_SOURCE_DIR "/home/shr/Code/Code/wamr_sandbox_compiler")
 
+include(ProcessorCount)
+ProcessorCount(N)
+
 # Wamr compiler and runtime ###################
 
 set(WAMR_COMPILER_DIR "${mod_wamr_SOURCE_DIR}/wamr-compiler/build/")
-set(WAMR_COMPILER_PATH "${WAMR_COMPILER_DIR}/wamrc")
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-  set (WAMR_BUILD_PLATFORM "darwin")
+
+if (NOT (${CMAKE_BUILD_TYPE} STREQUAL "Debug" OR ${CMAKE_BUILD_TYPE} STREQUAL "RELEASE"))
+  set (WAMR_BUILD_TYPE "Debug")
 else()
+  set (WAMR_BUILD_TYPE "${CMAKE_BUILD_TYPE}")
+endif()
+
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+  set (WAMR_COMPILER_PATH "${WAMR_COMPILER_DIR}/wamrc")
+  set (WAMR_BUILD_PLATFORM "darwin")
+elseif(WIN32)
+  set (WAMR_COMPILER_PATH "${WAMR_COMPILER_DIR}/${WAMR_BUILD_TYPE}/wamrc.exe")
+  set (WAMR_BUILD_PLATFORM "windows")
+else()
+  set (WAMR_COMPILER_PATH "${WAMR_COMPILER_DIR}/wamrc")
   set (WAMR_BUILD_PLATFORM "linux")
 endif()
 set (WAMR_BUILD_TARGET "X86_64")
@@ -130,21 +150,15 @@ set(WAMR_PARAM -DWAMR_BUILD_TARGET=${WAMR_BUILD_PLATFORM} -DWAMR_BUILD_TARGET=${
 
 add_custom_command(OUTPUT "${WAMR_COMPILER_PATH}"
                    WORKING_DIRECTORY "${mod_wamr_SOURCE_DIR}/wamr-compiler"
-                   COMMAND ./build_llvm.sh
+                   COMMAND python3 ./build_llvm.py
                    COMMAND ${CMAKE_COMMAND}
                            ${WAMR_PARAM}
-                           -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-                           -S
-                           .
-                           -B
-                           ./build
-                   COMMAND VERBOSE=1
-                           ${CMAKE_COMMAND}
-                           --build
-                           ./build
-                           --parallel
-                           --target
-                           all
+                           -DCMAKE_BUILD_TYPE=${WAMR_BUILD_TYPE}
+                           -S .
+                           -B ./build
+                   COMMAND ${CMAKE_COMMAND}
+                           --build ./build
+                           --parallel ${N}
                    COMMENT "Building wamrc compiler")
 
 add_custom_target(wamr_release ALL DEPENDS ${WAMR_COMPILER_PATH})
@@ -158,8 +172,13 @@ set (WAMR_BUILD_INTERP 0)
 set (WAMR_BUILD_FAST_INTERP 0)
 set (WAMR_BUILD_AOT 1)
 set (WAMR_BUILD_JIT 0)
-set (WAMR_BUILD_LIBC_BUILTIN 0)
-set (WAMR_BUILD_LIBC_WASI 1)
+if(WIN32)
+  set (WAMR_BUILD_LIBC_BUILTIN 1)
+  set (WAMR_BUILD_LIBC_WASI 0)
+else()
+  set (WAMR_BUILD_LIBC_BUILTIN 0)
+  set (WAMR_BUILD_LIBC_WASI 1)
+endif()
 set (WAMR_BUILD_LIBC_UVWASI 0)
 set (WAMR_BUILD_MULTI_MODULE 0)
 set (WAMR_BUILD_MINI_LOADER 0)
@@ -215,28 +234,21 @@ if(!WASMCLANG)
     )
 endif()
 
-set(C_SOURCE_FILES "${CMAKE_SOURCE_DIR}/c_src/wamr_sandbox_wrapper.c")
+set(C_GLUELIB_SOURCE_FILES "${CMAKE_SOURCE_DIR}/c_src/wamr_sandbox_wrapper.c" "${rlbox_SOURCE_DIR}/code/tests/rlbox_glue/lib/libtest.c")
 set(GLUE_LIB_WASM "${CMAKE_BINARY_DIR}/wasm/glue_lib_wamr.wasm")
 set(GLUE_LIB_SO "${CMAKE_BINARY_DIR}/wasm/glue_lib_wamr.aot")
 
 add_custom_command(OUTPUT ${GLUE_LIB_WASM} ${GLUE_LIB_SO}
-                   DEPENDS ${C_SOURCE_FILES}
+                   DEPENDS ${C_GLUELIB_SOURCE_FILES}
                    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/c_src
-                   COMMAND rlbox_SOURCE_DIR=${rlbox_SOURCE_DIR}
-                           wasiclang_SOURCE_DIR=${wasiclang_SOURCE_DIR}
-                           WAMR_COMPILER_DIR=${WAMR_COMPILER_DIR}
-                           ${CMAKE_COMMAND}
-                           -S
-                           .
-                           -B
-                           ${CMAKE_BINARY_DIR}/wasm
-                   COMMAND VERBOSE=1
-                           ${CMAKE_COMMAND}
-                           --build
-                           ${CMAKE_BINARY_DIR}/wasm
-                           --parallel
-                           --target
-                           all
+                   COMMAND ${wasiclang_SOURCE_DIR}/bin/clang.exe
+                           --sysroot ${wasiclang_SOURCE_DIR}/share/wasi-sysroot/
+                           ${C_GLUELIB_SOURCE_FILES}
+                           -o ${GLUE_LIB_WASM}
+                   COMMAND ${WAMR_COMPILER_PATH}
+                           --format=object
+                           -o ${GLUE_LIB_SO}
+                           ${GLUE_LIB_WASM}
                    COMMENT "Building wasm library")
 
 add_custom_target(glue_lib_wasm ALL DEPENDS wamr_release ${GLUE_LIB_WASM} ${GLUE_LIB_SO})
